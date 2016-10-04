@@ -25,37 +25,28 @@ class Vertex {
    public:
     using KeyT = int;
     Vertex() = default;
-    explicit Vertex(const KeyT id) : id_(id) {}
-    const KeyT id() const { return id_; }
+    explicit Vertex(const KeyT vid) : VertexId(vid) {}
+    const KeyT id() const { return VertexId; }
 
-    // serialization and deserialization
+    // Serialization and deserialization
     friend husky::BinStream& operator<<(husky::BinStream& stream, const Vertex& v) {
-        stream << v.id_ << v.neighbors_;
+        stream << v.VertexId << v.neighbor;
         return stream;
     }
     friend husky::BinStream& operator>>(husky::BinStream& stream, Vertex& v) {
-        stream >> v.id_ >> v.neighbors_;
+        stream >> v.VertexId >> v.neighbor;
         return stream;
     }
 
-    KeyT id_;
-    std::vector<KeyT> neighbors_;
-};
-
-template <typename MsgT>
-struct MinCombiner {
-    static void combine(MsgT& val, MsgT const& inc) {
-        if (inc < val) {
-            val = inc;
-        }
-    }
+    KeyT VertexId;
+    std::vector<KeyT> neighbor;
 };
 
 void pr_cc() {
     husky::io::HDFSLineInputFormat infmt;
     infmt.set_input(husky::Context::get_param("input"));
 
-    // create vertex object list and attribute list for pagerank value
+    // Create vertex object list and attribute list for pagerank value
     auto& vertex_list = husky::ObjListFactory::create_objlist<Vertex>();
     auto& pr_list = vertex_list.create_attrlist<float>("pr");
     auto& cid_list = vertex_list.create_attrlist<int>("cid");
@@ -69,7 +60,7 @@ void pr_cc() {
         it++;
         Vertex v(id);
         while (it != tok.end()) {
-            v.neighbors_.push_back(stoi(*it++));
+            v.neighbor.push_back(stoi(*it++));
         }
         auto idx = vertex_list.add_object(std::move(v));
         pr_list[idx] = 0.15;
@@ -78,59 +69,69 @@ void pr_cc() {
     husky::load(infmt, parser);
     husky::globalize(vertex_list);
 
-    // iterative PageRank computation
+    if (husky::Context::get_global_tid() == 0)
+        husky::base::log_msg("Parsing input is done.");
+    // Iterative PageRank computation
     auto& prch =
         husky::ChannelFactory::create_push_combined_channel<float, husky::SumCombiner<float>>(vertex_list, vertex_list);
     int numIters = stoi(husky::Context::get_param("iters"));
     for (int iter = 0; iter < numIters; ++iter) {
         husky::list_execute(vertex_list, [&prch, &pr_list, iter](Vertex& v) {
-            // auto& pr = pr_list.get(v);
-            if (v.neighbors_.size() == 0)
+            if (v.neighbor.size() == 0)
                 return;
             if (iter > 0)
                 pr_list[v] = 0.85 * prch.get(v) + 0.15;
 
-            float send_pr = pr_list[v] / v.neighbors_.size();
-            for (auto& nb : v.neighbors_) {
+            float send_pr = pr_list[v] / v.neighbor.size();
+            for (auto& nb : v.neighbor) {
                 prch.push(send_pr, nb);
             }
         });
     }
+    if (husky::Context::get_global_tid() == 0)
+        husky::base::log_msg("PageRank is done.");
 
-    // connected component computation
+    // Connected component computation
+    // Computation is finished if there is no message
     husky::lib::Aggregator<int> not_finished;
     not_finished.update(1);
     not_finished.to_reset_each_iter();
 
-    auto& ac = husky::lib::AggregatorFactory::get_channel();
-    auto& cidch = husky::ChannelFactory::create_push_combined_channel<int, MinCombiner<int>>(vertex_list, vertex_list);
-
-    husky::list_execute(vertex_list, {}, {&ac}, [&cidch, &cid_list, &not_finished](Vertex& v) {
+    auto& agg_ch = husky::lib::AggregatorFactory::get_channel();
+    auto& cidch = husky::ChannelFactory::create_push_combined_channel<int, husky::MinCombiner<int>>(vertex_list, vertex_list);
+    // Initilization
+    husky::list_execute(vertex_list, {}, {&cidch, &agg_ch}, [&cidch, &cid_list, &not_finished](Vertex& v) {
         int& cid = cid_list[v];
-        int min = cid;
-        for (auto nb : v.neighbors_) {
-            if (nb < min) {
-                min = nb;
+        // Get the smallest component id among neighbors
+        for (auto nb : v.neighbor) {
+            if (nb < cid) {
+                cid = nb;
             }
         }
-        cid = min;
-        for (auto nb : v.neighbors_) {
-            cidch.push(nb, min);
+        // Broadcast my component id
+        for (auto nb : v.neighbor) {
+            cidch.push(cid, nb);
         }
     });
-
+    // Main loop
     while (not_finished.get_value()) {
-        husky::list_execute(vertex_list, {}, {&ac}, [&cidch, &cid_list, &not_finished](Vertex& v) {
-            int u = cidch.get(v);
-            if (u < cid_list[v]) {
-                cid_list[v] = u;
-                not_finished.update(1);
-                for (auto nb : v.neighbors_) {
-                    cidch.push(nb, u);
+        husky::list_execute(vertex_list, {&cidch}, {&cidch, &agg_ch}, [&cidch, &cid_list, &not_finished](Vertex& v) {
+            if (cidch.has_msgs(v)) {
+                int msg = cidch.get(v);
+                // Broadcast again if the received component id is s
+                if (msg < cid_list[v]) {
+                    cid_list[v] = msg;
+                    not_finished.update(1);
+                    for (auto nb : v.neighbor) {
+                        cidch.push(msg, nb);
+                    }
                 }
             }
         });
     }
+
+    if (husky::Context::get_global_tid() == 0)
+        husky::base::log_msg("ConnectComponent is done.");
 }
 
 int main(int argc, char** argv) {
