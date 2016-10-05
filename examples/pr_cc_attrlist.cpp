@@ -25,31 +25,33 @@ class Vertex {
    public:
     using KeyT = int;
     Vertex() = default;
-    explicit Vertex(const KeyT vid) : VertexId(vid) {}
-    const KeyT id() const { return VertexId; }
+    explicit Vertex(const KeyT vid) : vertex_id(vid) {}
+    const KeyT id() const { return vertex_id; }
 
     // Serialization and deserialization
     friend husky::BinStream& operator<<(husky::BinStream& stream, const Vertex& v) {
-        stream << v.VertexId << v.neighbor;
+        stream << v.vertex_id << v.neighbor;
         return stream;
     }
     friend husky::BinStream& operator>>(husky::BinStream& stream, Vertex& v) {
-        stream >> v.VertexId >> v.neighbor;
+        stream >> v.vertex_id >> v.neighbor;
         return stream;
     }
 
-    KeyT VertexId;
+    KeyT vertex_id;
     std::vector<KeyT> neighbor;
 };
 
 void pr_cc() {
     husky::io::HDFSLineInputFormat infmt;
     infmt.set_input(husky::Context::get_param("input"));
-
-    // Create vertex object list and attribute list for pagerank value
+    // Create vertex object list
     auto& vertex_list = husky::ObjListFactory::create_objlist<Vertex>();
+    // Create attribute lists for PageRank and ConnectedComponent
     auto& pr_list = vertex_list.create_attrlist<float>("pr");
     auto& cid_list = vertex_list.create_attrlist<int>("cid");
+
+    // Load input
     auto parser = [&](boost::string_ref& chunk) {
         if (chunk.size() == 0)
             return;
@@ -68,9 +70,9 @@ void pr_cc() {
     };
     husky::load(infmt, parser);
     husky::globalize(vertex_list);
-
     if (husky::Context::get_global_tid() == 0)
-        husky::base::log_msg("Parsing input is done.");
+        husky::base::log_msg("Loading input is done.");
+
     // Iterative PageRank computation
     auto& prch =
         husky::ChannelFactory::create_push_combined_channel<float, husky::SumCombiner<float>>(vertex_list, vertex_list);
@@ -129,9 +131,14 @@ void pr_cc() {
             }
         });
     }
-
     if (husky::Context::get_global_tid() == 0)
         husky::base::log_msg("ConnectComponent is done.");
+    std::string small_graph = husky::Context::get_param("print");
+    if (small_graph == "1") {
+        husky::list_execute(vertex_list, [&cid_list](Vertex& v) {
+            husky::base::log_msg("vertex: "+std::to_string(v.id()) + " component id: "+std::to_string(cid_list[v]));
+        });
+    }
 }
 
 int main(int argc, char** argv) {
@@ -140,6 +147,7 @@ int main(int argc, char** argv) {
     args.push_back("hdfs_namenode_port");
     args.push_back("input");
     args.push_back("iters");
+    args.push_back("print");
     if (husky::init_with_args(argc, argv, args)) {
         husky::run_job(pr_cc);
         return 0;

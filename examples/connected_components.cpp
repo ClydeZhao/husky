@@ -26,20 +26,20 @@ class Vertex {
     using KeyT = int;
 
     Vertex() = default;
-    explicit Vertex(const KeyT& id) : vertexId(id), cid(id) {}
-    const KeyT& id() const { return vertexId; }
+    explicit Vertex(const KeyT& id) : vertex_id(id), cid(id) {}
+    const KeyT& id() const { return vertex_id; }
 
     // Serialization and deserialization
-    friend husky::BinStream& operator<<(husky::BinStream& stream, const Vertex& u) {
-        stream << u.vertexId << u.adj << u.cid;
+    friend husky::BinStream& operator<<(husky::BinStream& stream, const Vertex& v) {
+        stream << v.vertex_id << v.adj << v.cid;
         return stream;
     }
-    friend husky::BinStream& operator>>(husky::BinStream& stream, Vertex& u) {
-        stream >> u.vertexId >> u.adj >> u.cid;
+    friend husky::BinStream& operator>>(husky::BinStream& stream, Vertex& v) {
+        stream >> v.vertex_id >> v.adj >> v.cid;
         return stream;
     }
 
-    int vertexId;
+    int vertex_id;
     std::vector<int> adj;
     int cid = -1;
 };
@@ -77,38 +77,38 @@ void cc() {
     auto& agg_ch = husky::lib::AggregatorFactory::get_channel();
 
     // Initialization
-    husky::list_execute(vertex_list, {}, {&ch, &agg_ch}, [&ch, &not_finished](Vertex& u) {
+    husky::list_execute(vertex_list, {}, {&ch, &agg_ch}, [&ch, &not_finished](Vertex& v) {
         // Get the smallest component id among neighbors
-        for (auto nb : u.adj) {
-            if (nb < u.cid)
-                u.cid = nb;
+        for (auto nb : v.adj) {
+            if (nb < v.cid)
+                v.cid = nb;
         }
         // Broadcast my component id
-        for (auto nb : u.adj) {
-            if (nb > u.cid)
-                ch.push(u.cid, nb);
+        for (auto nb : v.adj) {
+            if (nb > v.cid)
+                ch.push(v.cid, nb);
         }
     });
     // Main Loop
     while (not_finished.get_value()) {
         if (husky::Context::get_global_tid() == 0)
             husky::base::log_msg("# updated in this round: "+std::to_string(not_finished.get_value()));
-        husky::list_execute(vertex_list, {&ch}, {&ch, &agg_ch}, [&ch, &not_finished](Vertex& u) {
-            if (ch.has_msgs(u)) {
-                auto c = ch.get(u);
-                if (c < u.cid) {
-                    u.cid = c;
+        husky::list_execute(vertex_list, {&ch}, {&ch, &agg_ch}, [&ch, &not_finished](Vertex& v) {
+            if (ch.has_msgs(v)) {
+                auto msg = ch.get(v);
+                if (msg < v.cid) {
+                    v.cid = msg;
                     not_finished.update(1);
-                    for (auto nb : u.adj)
-                        ch.push(u.cid, nb);
+                    for (auto nb : v.adj)
+                        ch.push(v.cid, nb);
                 }
             }
         });
     }
-    constexpr bool small_graph = true;
-    if (small_graph) {
-        husky::list_execute(vertex_list, [](Vertex& u) {
-            husky::base::log_msg("vertex: "+std::to_string(u.id()) + " component id: "+std::to_string(u.cid));
+    std::string small_graph = husky::Context::get_param("print");
+    if (small_graph == "1") {
+        husky::list_execute(vertex_list, [](Vertex& v) {
+            husky::base::log_msg("vertex: "+std::to_string(v.id()) + " component id: "+std::to_string(v.cid));
         });
     }
 }
@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
     args.push_back("hdfs_namenode");
     args.push_back("hdfs_namenode_port");
     args.push_back("input");
+    args.push_back("print");
     if (husky::init_with_args(argc, argv, args)) {
         husky::run_job(cc);
         return 0;
