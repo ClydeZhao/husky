@@ -14,7 +14,7 @@ default_dirs = [
     'lib',
     'master',
 ]
-husky_root = os.getenv('HUSKY_ROOT', '.')
+husky_root = '.';
 os.chdir(husky_root)
 clang_format = os.getenv('CLANG_FORMAT', 'clang-format')
 

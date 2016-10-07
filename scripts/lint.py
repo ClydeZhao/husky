@@ -20,7 +20,7 @@ default_dirs = [
     'master',
     'examples'
 ]
-husky_root = os.getenv('HUSKY_ROOT', '.')
+husky_root = '.'
 os.chdir(husky_root)
 
 def usage():
