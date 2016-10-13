@@ -14,7 +14,7 @@ default_dirs = [
     'lib',
     'master',
 ]
-husky_root = '.';
+husky_root = os.getenv('HUSKY_ROOT', '.')
 os.chdir(husky_root)
 clang_format = os.getenv('CLANG_FORMAT', 'clang-format')
 
@@ -60,7 +60,7 @@ def check(files=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Husky Clang-Format Tool')
     parser.add_argument('-o', choices=['replace', 'check'], help='Replace for all c++ codes or check them only with clang-format')
-    parser.add_argument('--path', help='Path to a specific file or a directory')
+    parser.add_argument('path', nargs='?', help='Path to a specific file or a directory')
     args = parser.parse_args()
 
     files = None

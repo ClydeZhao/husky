@@ -25,11 +25,11 @@ Then, follow the steps below. All issues related to improving Husky are very muc
     Issues(3)  
     Detailed description(4)
 
-5. Before committing, it would be better to pass `lint.py` and `clang-format.py`: `$ cd husky && ./scripts/lint.py && ./scripts/clang-format.py -o check`. More usage of the scripts:
+5. Before committing, it would be better to pass `lint.py` and `clang-format.py`: `$ cd husky && HUSKY_ROOT=. ./scripts/lint.py && HUSKY_ROOT=. ./scripts/clang-format.py -o check`. More usage of the scripts:
 ```
-$ ./scripts/lint.py [base, core, lib, ...]
+$ ./scripts/lint.py [FILE or DIR]
 $ ./scripts/clang-format.py -o [replace, check]
-$ ./scripts/clang-format.py -o [replace, check] --path FILE or DIR
+$ ./scripts/clang-format.py -o [replace, check] [FILE or DIR]
 ```
 6. Push local commit to your own repository: `$ git push -u/f origin dev`
 7. Create a pull request to the upstream repository. Then you can `@reviewers` to review your patch.
