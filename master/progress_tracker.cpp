@@ -38,7 +38,7 @@ void ProgressTracker::finish_handler() {
     stream >> worker_name >> worker_id;
     finished_workers_.insert(worker_id);
 
-    base::log_msg("master => worker finsished @" + worker_name + "-" + std::to_string(worker_id));
+    base::log_msg("master => worker finished @" + worker_name + "-" + std::to_string(worker_id));
 
     if (!master.is_continuous() && (finished_workers_.size() == Context::get_worker_info()->get_num_workers())) {
         master.halt();

@@ -75,7 +75,7 @@ boost::string_ref HDFSFileSplitter::fetch_block(bool is_next) {
     } else {
         // Ask the master for a new block
         BinStream question;
-        question << url_ << husky::Context::get_param("hostname");
+        question << url_ << husky::Context::get_global_tid();
         BinStream answer = husky::Context::get_coordinator().ask_master(question, husky::TYPE_HDFS_BLK_REQ);
         std::string fn;
         answer >> fn;

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #ifdef WITH_HDFS
-
+#include "core/network.hpp"
 #include "master/hdfs_assigner.hpp"
 
 #include <string>
@@ -42,10 +42,16 @@ void HDFSBlockAssigner::master_main_handler() {
     auto& master = Master::get_instance();
     auto master_socket = master.get_socket();
     std::string url, host;
+    int global_tid, proc_id;
     BinStream stream = zmq_recv_binstream(master_socket.get());
-    stream >> url >> host;
+    stream >> url >> global_tid;
+    proc_id = Context::get_worker_info()->get_proc_id(global_tid);
+    host = Context::get_worker_info()->get_host(proc_id);
 
-    std::pair<std::string, size_t> ret = answer(host, url);
+    std::pair<std::string, size_t> ret = answer(host, global_tid, url);
+    if (ret.first != "" && ret.second != 0) {
+        thread_blocks_dict_[url][global_tid] += 1;
+    }
     stream.clear();
     stream << ret.first << ret.second;
 
@@ -85,6 +91,7 @@ void HDFSBlockAssigner::browse_hdfs(const std::string& url) {
 
     int num_files;
     int dummy;
+    int num_blocks = 0;
     hdfsFileInfo* file_info = hdfsListDirectory(fs_, url.c_str(), &num_files);
     auto& files_locality = files_locality_dict[url];
     for (int i = 0; i < num_files; ++i) {
@@ -94,6 +101,7 @@ void HDFSBlockAssigner::browse_hdfs(const std::string& url) {
         size_t k = 0;
         while (k < file_info[i].mSize) {
             // for every block in a file
+            num_blocks += 1;
             auto blk_loc = hdfsGetFileBlockLocations(fs_, file_info[i].mName, k, 1, &dummy);
             for (int j = 0; j < blk_loc->numOfNodes; ++j) {
                 // for every replication in a block
@@ -104,9 +112,10 @@ void HDFSBlockAssigner::browse_hdfs(const std::string& url) {
         }
     }
     hdfsFreeFileInfo(file_info, num_files);
+    avg_blocks_ = std::ceil(num_blocks / num_workers_alive);
 }
 
-std::pair<std::string, size_t> HDFSBlockAssigner::answer(const std::string& host, const std::string& url) {
+std::pair<std::string, size_t> HDFSBlockAssigner::answer(const std::string& host, const int tid, const std::string& url) {
     if (!fs_)
         return {"", 0};
 
@@ -114,20 +123,23 @@ std::pair<std::string, size_t> HDFSBlockAssigner::answer(const std::string& host
     if (files_locality_dict.find(url) == files_locality_dict.end()) {
         browse_hdfs(url);
         finish_dict[url] = 0;
+        thread_blocks_dict_[url].clear();
     }
 
-    // empty url
+    // empty url or worker has read more blocks than average
     auto& files_locality = files_locality_dict[url];
-    if (files_locality.size() == 0) {
+    auto& thread_blocks = thread_blocks_dict_[url];
+    if (thread_blocks[tid] > avg_blocks_ || files_locality.size() == 0) {
         finish_dict[url] += 1;
-        if (finish_dict[url] == num_workers_alive)
+        if (finish_dict[url] == num_workers_alive) {
             files_locality_dict.erase(url);
+        }
         return {"", 0};
     }
 
     std::pair<std::string, size_t> ret = {"", 0};  // selected_file, offset
     for (auto& triplet : files_locality)
-        if (triplet.block_location == host) {
+        if (ns_lookup(triplet.block_location) == ns_lookup(host)) {
             ret = {triplet.filename, triplet.offset};
             break;
         }

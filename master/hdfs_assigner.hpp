@@ -43,7 +43,7 @@ class HDFSBlockAssigner {
     inline bool is_valid() const { return is_valid_; }
     void init_hdfs(const std::string& node, const std::string& port);
     void browse_hdfs(const std::string& url);
-    std::pair<std::string, size_t> answer(const std::string& host, const std::string& url);
+    std::pair<std::string, size_t> answer(const std::string& host, const int tid, const std::string& url);
     /// Return the number of workers who have finished reading the files in
     /// the given url
     int get_num_finished(std::string& url);
@@ -57,6 +57,8 @@ class HDFSBlockAssigner {
     hdfsFS fs_ = NULL;
     std::map<std::string, int> finish_dict;
     std::map<std::string, std::unordered_set<BlkDesc>> files_locality_dict;
+    std::map<std::string, std::map<int, int>> thread_blocks_dict_;
+    int avg_blocks_;
 };
 
 }  // namespace husky
