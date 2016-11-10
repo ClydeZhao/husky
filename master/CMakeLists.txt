@@ -15,7 +15,7 @@
 
 include_directories(${PROJECT_SOURCE_DIR} ${Boost_INCLUDE_DIRS})
 
-set(master_plugins mongodb_assigner.cpp nfs_assigner.cpp progress_tracker.cpp nfs_binary_assigner.cpp)
+set(master_plugins mongodb_assigner.cpp nfs_assigner.cpp orc_assigner.cpp progress_tracker.cpp nfs_binary_assigner.cpp)
 
 if(LIBHDFS3_FOUND)
     include_directories(${LIBHDFS3_INCLUDE_DIR})
@@ -27,6 +27,11 @@ if(MONGOCLIENT_FOUND)
     include_directories(${MONGOCLIENT_INCLUDE_DIR})
     add_definitions(-DWITH_MONGODB)
 endif(MONGOCLIENT_FOUND)
+
+if(ORC_FOUND)
+    include_directories(${ORC_INCLUDE_DIR})
+    add_definitions(-DWITH_ORC)
+endif(ORC_FOUND)
 
 set(husky husky-lib husky-io husky-core husky-base)
 

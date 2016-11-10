@@ -44,5 +44,11 @@ if(THRIFT_FOUND)
     set(input_cpps ${input_cpps} flume_connector/flume_types.cpp flume_connector/flume_constants.cpp flume_connector/ThriftSourceProtocol.cpp flume_inputformat.cpp)
 endif(THRIFT_FOUND)
 
+if(ORC_FOUND)
+    include_directories(${ORC_INCLUDE_DIR})
+    add_definitions(-DWITH_ORC)
+    set(input_cpps ${input_cpps} orc_file_splitter.cpp orc_inputformat.cpp)
+endif(ORC_FOUND)
+
 add_library(input-objs OBJECT ${input_cpps})
 set_property(TARGET input-objs PROPERTY CXX_STANDARD 14)
